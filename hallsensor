@@ -1,0 +1,72 @@
+import os
+import time
+import RPi.GPIO as GPIO
+import Adafruit_MCP3008
+import logging
+import configparser
+
+class CurrentSensor:
+
+    def __init__(self, config_file='config.ini'):
+        self.config = configparser.ConfigParser()
+        self.config.read(config_file)
+        self.mcp = Adafruit_MCP3008.MCP3008(
+            clk=self.config.getint('GPIO', 'CLK'),
+            cs=self.config.getint('GPIO', 'CS'),
+            miso=self.config.getint('GPIO', 'MISO'),
+            mosi=self.config.getint('GPIO', 'MOSI')
+        )
+        self.hall_sensor_pin = self.config.getint('GPIO', 'HALL_SENSOR_PIN')
+        self.led_pin = self.config.getint('GPIO', 'LED_PIN')
+        self.calibration_constant = self.config.getfloat('CALIBRATION', 'CALIBRATION_CONSTANT')
+        self.log_directory = self.config.get('LOGGING', 'LOG_DIRECTORY')
+
+    def setup_gpio(self):
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.hall_sensor_pin, GPIO.IN)
+        GPIO.setup(self.led_pin, GPIO.OUT, initial=GPIO.LOW)
+
+    def cleanup_gpio(self):
+        GPIO.cleanup()
+
+    def read_current(self):
+        voltage = self.mcp.read_adc(ADC_CHANNEL) * (3.3 / 1023.0)
+        current = voltage / self.calibration_constant
+        return current
+
+    def log_current(self, current):
+        log_file = os.path.join(self.log_directory, time.strftime('%Y-%m-%d.log'))
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_file, 'a') as f:
+            f.write(f'{timestamp}, {current:.2f}\n')
+
+    def start_reading_current(self):
+        self.setup_gpio()
+        logging.info('Started reading current')
+        while GPIO.input(self.hall_sensor_pin) == GPIO.HIGH:
+            time.sleep(0.01)
+        GPIO.output(self.led_pin, GPIO.HIGH)
+        logging.debug('Button pressed')
+        while GPIO.input(self.hall_sensor_pin) == GPIO.LOW:
+            current = self.read_current()
+            self.log_current(current)
+            time.sleep(0.1)
+        GPIO.output(self.led_pin, GPIO.LOW)
+        logging.debug('Button released')
+        self.cleanup_gpio()
+        logging.info('Stopped reading current')
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    sensor = CurrentSensor()
+    sensor.setup_gpio()
+    while True:
+        try:
+            GPIO.wait_for_edge(sensor.hall_sensor_pin, GPIO.RISING)
+            sensor.start_reading_current()
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            logging.error(e)
+    sensor.cleanup_gpio()
