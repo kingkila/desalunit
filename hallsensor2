@@ -1,0 +1,93 @@
+#!/usr/bin/python3
+import time
+import math
+import spidev
+import logging
+import logging.handlers
+import RPi.GPIO as GPIO
+
+spi = spidev.SpiDev()
+spi.open(0, 0)
+
+# Constants
+HALL_SENSOR_PIN = 4
+ADC_CHANNEL = 0
+CALIBRATION_CONSTANT = 1.0
+LOG_DIRECTORY = "test_logs"
+BUTTON_PIN = 17
+LED_PIN = 18
+
+# Set up GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(HALL_SENSOR_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(LED_PIN, GPIO.OUT)
+GPIO.output(LED_PIN, GPIO.LOW)
+
+# Define function to read ADC
+def read_adc(adcnum):
+    if ((adcnum > 7) or (adcnum < 0)):
+        return -1
+    r = spi.xfer2([1, 8 + adcnum << 4, 0])
+    adcout = ((r[1] & 3) << 8) + r[2]
+    return adcout
+
+# Define function to calculate current
+def calculate_current(adc_value):
+    voltage = adc_value * (3.3 / 1023)
+    current = (voltage / CALIBRATION_CONSTANT) * 1000  # convert to milliamps
+    return current
+
+# Set up logging
+logger = None
+
+# Main loop
+try:
+    while True:
+        button_state = GPIO.input(BUTTON_PIN)
+        if button_state == GPIO.LOW:
+            # Turn on LED
+            GPIO.output(LED_PIN, GPIO.HIGH)
+
+            # Generate unique filename based on timestamp
+            timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+            log_filename = f"{timestamp}.log"
+            log_filepath = f"{LOG_DIRECTORY}/{log_filename}"
+
+            # Set up logging
+            logger = logging.getLogger(__name__)
+            logger.setLevel(logging.INFO)
+            handler = logging.FileHandler(log_filepath)
+            handler.setLevel(logging.INFO)
+            logger.addHandler(handler)
+
+            # Log start of test
+            logger.info("Starting test")
+
+            # Read current and log to file until button is released
+            while GPIO.input(BUTTON_PIN) == GPIO.LOW:
+                hall_sensor_state = GPIO.input(HALL_SENSOR_PIN)
+                if hall_sensor_state == GPIO.LOW:
+                    adc_value = read_adc(ADC_CHANNEL)
+                    current = calculate_current(adc_value)
+                    logger.info(f"Current (mA): {current:.2f}")
+                time.sleep(0.1)
+
+            # Log end of test and clean up logger
+            logger.info("Ending test")
+            logger.removeHandler(handler)
+            handler.close()
+            logger = None
+
+            # Turn off LED
+            GPIO.output(LED_PIN, GPIO.LOW)
+
+        time.sleep(0.1)
+
+except KeyboardInterrupt:
+    if logger:
+        logger.removeHandler(handler)
+        handler.close()
+    GPIO.cleanup()
+
+#let's goooo!

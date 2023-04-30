@@ -21,8 +21,8 @@ def clear():
 clear()
 
 def desorb(): 
-    clear()
-    io.output(setuplib['waste'],0)
+	clear()
+	io.output(setuplib['waste'],0)
 	io.output(setuplib['pump'],0)
 	io.output(setuplib['desorb'],0)
 	print("\n" " Shunt", "\n")
@@ -41,11 +41,12 @@ def recycle():
 	print("\n", "Recycling", "\n")
 
 print("\n", "Choose a cycle","\n", "Adsorb, Desorb, Recycle, Help, Exit", "\n")
+
 while True:
 	try:
 		cycle = input("Choose a cycle to start | ")
 		if cycle == 'desorb':
-            desorb()
+			desorb()
 
 		if cycle == 'adsorb':
             adsorb()
